@@ -1,6 +1,6 @@
 # 1–25 Bingo (live online)
 
-Play 1 to 25 bingo with up to 15 friends. One person creates a room, shares the 4-letter code or invite link, and everyone plays live on their own phone. No accounts needed for players.
+Play bingo with up to 15 friends in two modes: 5 × 5 (numbers 1–25, strike BINGO) 7 × 7 (numbers 1–49, strike FRIENDS) or 10 × 10 (numbers 1–100, strike BINGO CHIPS). One person creates a room, shares the 4-letter code or invite link, and everyone plays live on their own phone. No accounts needed for players.
 
 Files:
 - `index.html`: the game page
@@ -37,9 +37,9 @@ Vercel gives you a link like `https://bingo-friends.vercel.app`. Share it with y
 1. Everyone opens the link and types their name.
 2. One person taps **Create room**, then **Copy invite** and sends it to friends (or just reads out the code).
 3. Friends tap **Join room** with the code, or open the invite link directly.
-4. Everyone arranges 1–25 (Shuffle or Fill it myself) and taps **I'm ready**.
+4. The host picks the mode (5 × 5, 7 × 7 or 10 × 10). Everyone arranges their grid (Shuffle or Fill it myself) and taps **I'm ready**.
 5. The host taps **Start game**. On your turn, tap a number to call it. It's struck on every grid.
-6. Each full row, column or diagonal strikes a letter of BINGO. Strike all five and tap **Call BINGO!** first to win.
+6. Each full row, column or diagonal strikes one letter. Strike all of BINGO (5 lines), FRIENDS (7 lines) or BINGO CHIPS (10 lines) and tap the call button first to win.
 
 ## Good to know
 

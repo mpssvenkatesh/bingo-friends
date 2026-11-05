@@ -1,4 +1,4 @@
-/* Bingo (5x5 BINGO and 10x10 BINGO CHIPS) — live multiplayer over Firebase Realtime Database.
+/* Bingo (5x5 BINGO, 7x7 FRIENDS, 10x10 BINGO CHIPS) — live multiplayer over Firebase Realtime Database.
    Data: rooms/{CODE} = { hostKey, status, round, order[], skips, createdAt,
                           players: { pid: {name, joinedAt, round, board[], bingoAt, bingoRound} },
                           calls:   { r{round}: { n{num}: {n, by, at} } } } */
@@ -13,8 +13,10 @@ function linesFor(n) {
   L.push(idx.map(i => i * n + i), idx.map(i => i * n + (n - 1 - i)));
   return (LINE_CACHE[n] = L);
 }
-const WORDS = { 5: 'BINGO', 10: 'BINGOCHIPS' };
-const CALL_LABEL = { 5: 'BINGO', 10: 'BINGO CHIPS' };
+const WORDS = { 5: 'BINGO', 7: 'FRIENDS', 10: 'BINGOCHIPS' };
+const CALL_LABEL = { 5: 'BINGO', 7: 'FRIENDS', 10: 'BINGO CHIPS' };
+const SIZES = [5, 7, 10];
+const sizeOf = v => SIZES.includes(v) ? v : 5;
 const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const MAX_PLAYERS = 15;
 
@@ -55,7 +57,7 @@ function show(v) {
 
 /* ---------- derived game state ---------- */
 function round() { return game?.round || 1; }
-function N() { return game?.size === 10 ? 10 : 5; }
+function N() { return sizeOf(game?.size); }
 function WORD() { return WORDS[N()]; }
 const fitsMode = b => Array.isArray(b) && b.length === N() * N();
 function me() { return players[pkey]; }
@@ -83,6 +85,7 @@ function renderGrid(el, board, opts) {
   const n = sideOf(board);
   el.style.setProperty('--n', n);
   el.classList.toggle('ten', n === 10);
+  el.classList.toggle('seven', n === 7);
   el.innerHTML = '';
   board.forEach((n, i) => {
     const b = document.createElement('button');
@@ -121,6 +124,7 @@ function playerList(el, mode) {
 function drawLines(svg, done, n) {
   svg.setAttribute('viewBox', `0 0 ${n} ${n}`);
   svg.classList.toggle('ten', n === 10);
+  svg.classList.toggle('seven', n === 7);
   svg.innerHTML = done.map(l => {
     const a = l[0], z = l[l.length - 1];
     const ax = a % n + .5, ay = Math.floor(a / n) + .5, zx = z % n + .5, zy = Math.floor(z / n) + .5;
@@ -139,7 +143,7 @@ function render() {
     $('lobbyCode').textContent = code;
     playerList($('lobbyPlayers'), 'lobby');
     if (draft.length !== N() * N()) { draft = shuffled(N()); fillMode = false; nextFill = 0; }
-    ['mode5', 'mode10'].forEach(id => {
+    ['mode5', 'mode7', 'mode10'].forEach(id => {
       const b = $(id), on = +b.dataset.size === N();
       b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.disabled = !isHost;
     });
@@ -184,6 +188,7 @@ function render() {
     lettersEl.dataset.word = W;
     lettersEl.style.setProperty('--n', W.length);
     lettersEl.classList.toggle('ten', W.length === 10);
+    lettersEl.classList.toggle('seven', W.length === 7);
     lettersEl.innerHTML = [...W].map(ch => `<div class="letter">${ch}</div>`).join('');
   }
   [...lettersEl.children].forEach((el, i) => el.classList.toggle('struck', i < count));
@@ -233,7 +238,7 @@ function subscribeRoom(c) {
   roomRef.on('value', snap => {
     const v = snap.val();
     if (!v) { leaveRoom('That room no longer exists.'); return; }
-    game = { hostKey: v.hostKey, status: v.status, round: v.round || 1, order: v.order || [], skips: v.skips || 0, size: v.size === 10 ? 10 : 5 };
+    game = { hostKey: v.hostKey, status: v.status, round: v.round || 1, order: v.order || [], skips: v.skips || 0, size: sizeOf(v.size) };
     players = {};
     Object.entries(v.players || {}).forEach(([k, p]) => { players[k] = Object.assign({ key: k }, p); });
     calls = Object.values((v.calls || {})['r' + game.round] || {})
@@ -351,6 +356,7 @@ $('createBtn').onclick = createRoom;
 $('joinBtn').onclick = () => { const c = $('codeInput').value.trim(); if (c.length === 4) joinRoom(c, false); else $('homeNote').textContent = 'Room codes have 4 letters.'; };
 $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
 $('mode5').onclick = () => setMode(5);
+$('mode7').onclick = () => setMode(7);
 $('mode10').onclick = () => setMode(10);
 $('shuffleBtn').onclick = () => { draft = shuffled(N()); fillMode = false; nextFill = 0; render(); };
 $('manualBtn').onclick = () => { draft = Array(N() * N()).fill(null); fillMode = true; nextFill = 0; render(); };

@@ -123,9 +123,14 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
 .grid.ten .cell.hit::before, .grid.ten .cell.hit::after { height: 2px; width: 62%; }
 .grid.ten .cell.last { box-shadow: inset 0 0 0 2px var(--gold); }
 .lines.ten line { stroke-width: .16; }
-.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid.seven .cell { font-size: clamp(18px, 6vw, 30px); }
+.grid.seven .cell.empty { font-size: 14px; }
+.lines.seven line { stroke-width: .12; }
+.letters.seven { gap: 4px; }
+.letters.seven .letter { font-size: clamp(26px, 8.5vw, 42px); }
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .mode { font-family: var(--hand); font-size: 19px; padding: 10px; border-radius: 10px; border: 2px solid var(--ink-soft); background: var(--paper); color: var(--ink); cursor: pointer; line-height: 1.2; }
-.mode small { display: block; font-size: 15px; color: var(--ink-soft); }
+.mode small { display: block; font-size: 14px; color: var(--ink-soft); }
 .mode.on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .mode.on small { color: var(--rule); }
 .mode:disabled { cursor: default; }
@@ -185,7 +190,7 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
       <p>2. Everyone arranges 1–25 on their own grid and presses Ready. Up to 15 players per room.</p>
       <p>3. Take turns: on your turn, tap a number to call it. It gets struck on everyone's grid.</p>
       <p>4. Each full row, column or diagonal strikes a letter. Strike them all and press the call button first to win.</p>
-      <p>Modes: 5 × 5 uses 1–25 and BINGO (5 lines). 10 × 10 uses 1–100 and BINGO CHIPS (10 lines). The host picks the mode in the room.</p>
+      <p>Modes: 5 × 5 uses 1–25 and BINGO (5 lines). 7 × 7 uses 1–49 and FRIENDS (7 lines). 10 × 10 uses 1–100 and BINGO CHIPS (10 lines). The host picks the mode in the room.</p>
     </div>
   </section>
 
@@ -200,6 +205,7 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
       <h2>Game mode</h2>
       <div class="modes">
         <button class="mode" id="mode5" data-size="5">5 × 5<small>1–25 · BINGO</small></button>
+        <button class="mode" id="mode7" data-size="7">7 × 7<small>1–49 · FRIENDS</small></button>
         <button class="mode" id="mode10" data-size="10">10 × 10<small>1–100 · BINGO CHIPS</small></button>
       </div>
       <p class="note" id="modeNote" style="text-align:left"></p>
