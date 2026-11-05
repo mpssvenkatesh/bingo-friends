@@ -1,4 +1,4 @@
-/* Bingo (5x5 BINGO, 7x7 FRIENDS, 10x10 BINGO CHIPS) — live multiplayer over Firebase Realtime Database.
+/* Bingo Diwali edition (5x5 BINGO, 7x7 FRIENDS, 10x10 BINGO CHIPS) — live multiplayer over Firebase Realtime Database.
    Data: rooms/{CODE} = { hostKey, status, round, order[], skips, createdAt,
                           players: { pid: {name, joinedAt, round, board[], bingoAt, bingoRound} },
                           calls:   { r{round}: { n{num}: {n, by, at} } } } */
@@ -223,7 +223,7 @@ function render() {
   playerList($('gamePlayers'), 'game');
 
   if (win) {
-    if ($('win').hidden) confetti();
+    if ($('win').hidden) fireworks();
     $('win').hidden = false;
     $('winText').textContent = win.key === pkey ? `You won in ${calls.length} calls!` : `${win.name} won this round.`;
     $('againBtn').hidden = !isHost;
@@ -371,30 +371,62 @@ $('leaveBtn2').onclick = () => leaveRoom();
 $('bingoBtn').onclick = claimBingo;
 $('againBtn').onclick = playAgain;
 $('skipBtn').onclick = () => room(code).update({ skips: (game.skips || 0) + 1 });
-/* ---------- confetti on a win ---------- */
-function confetti() {
-  try { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch {}
-  const cv = document.createElement('canvas');
-  cv.id = 'confetti'; document.body.appendChild(cv);
+/* ---------- Diwali effects: rising embers and win fireworks ---------- */
+const calm = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } })();
+const fxColors = () => { const cs = getComputedStyle(document.documentElement); return ['--gold', '--marigold', '--rani', '--ball-4', '--ball-5', '--cream'].map(v => cs.getPropertyValue(v).trim()); };
+
+function embers() {
+  const cv = $('embers'); if (!cv || calm) return;
+  const ctx = cv.getContext('2d'); let W, H, dpr;
+  const size = () => { dpr = Math.min(devicePixelRatio || 1, 2); W = cv.width = innerWidth * dpr; H = cv.height = innerHeight * dpr; };
+  size(); addEventListener('resize', size);
+  const make = (y) => ({ x: Math.random() * W, y: y ?? H + Math.random() * H * .3, r: (1 + Math.random() * 2.2) * dpr,
+    vy: (.25 + Math.random() * .6) * dpr, sway: Math.random() * 6.28, a: .3 + Math.random() * .6 });
+  const bits = Array.from({ length: 46 }, () => make(Math.random() * H));
+  (function tick() {
+    if (!document.hidden) {
+      ctx.clearRect(0, 0, W, H);
+      for (const b of bits) {
+        b.y -= b.vy; b.sway += .02; b.x += Math.sin(b.sway) * .3 * dpr;
+        if (b.y < -10) Object.assign(b, make());
+        const tw = .6 + .4 * Math.sin(b.sway * 3);
+        const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 4);
+        g.addColorStop(0, `rgba(255,214,120,${b.a * tw})`); g.addColorStop(1, 'rgba(255,154,31,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 4, 0, 6.29); ctx.fill();
+      }
+    }
+    requestAnimationFrame(tick);
+  })();
+}
+
+function fireworks() {
+  if (calm) return;
+  const cv = document.createElement('canvas'); cv.id = 'fireworks'; document.body.appendChild(cv);
   const ctx = cv.getContext('2d'), dpr = Math.min(devicePixelRatio || 1, 2);
   const W = cv.width = innerWidth * dpr, H = cv.height = innerHeight * dpr;
-  const cs = getComputedStyle(document.documentElement);
-  const colors = [1, 2, 3, 4, 5].map(i => cs.getPropertyValue('--ball-' + i).trim()).concat(cs.getPropertyValue('--dauber').trim());
-  const bits = Array.from({ length: 140 }, () => ({
-    x: W / 2 + (Math.random() - .5) * W * .3, y: H * .35,
-    vx: (Math.random() - .5) * 18 * dpr, vy: (-Math.random() * 16 - 6) * dpr,
-    w: (6 + Math.random() * 8) * dpr, h: (4 + Math.random() * 6) * dpr,
-    r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: colors[Math.floor(Math.random() * colors.length)]
-  }));
-  const end = performance.now() + 3200;
+  const colors = fxColors(), sparks = [];
+  const burst = () => {
+    const x = W * (.15 + Math.random() * .7), y = H * (.15 + Math.random() * .35);
+    const c = colors[Math.floor(Math.random() * colors.length)], n = 70;
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * 6.283, sp = (2.5 + Math.random() * 3.5) * dpr;
+      sparks.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 1, c });
+    }
+  };
+  let shots = 0; burst(); shots++;
+  const timer = setInterval(() => { burst(); if (++shots >= 7) clearInterval(timer); }, 420);
+  const end = performance.now() + 4200;
   (function tick(t) {
-    ctx.clearRect(0, 0, W, H);
-    bits.forEach(b => {
-      b.vy += .45 * dpr; b.vx *= .99; b.x += b.vx; b.y += b.vy; b.r += b.vr;
-      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.fillStyle = b.c;
-      ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); ctx.restore();
-    });
-    if (t < end) requestAnimationFrame(tick); else cv.remove();
+    ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const s of sparks) {
+      if (s.life <= 0) continue;
+      s.vx *= .97; s.vy = s.vy * .97 + .06 * dpr; s.x += s.vx; s.y += s.vy; s.life -= .014;
+      ctx.globalAlpha = Math.max(s.life, 0); ctx.fillStyle = s.c;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 2.2 * dpr, 0, 6.29); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (t < end) requestAnimationFrame(tick); else { clearInterval(timer); cv.remove(); }
   })(performance.now());
 }
 
@@ -407,6 +439,8 @@ $('copyBtn').onclick = async () => {
 };
 
 /* ---------- start ---------- */
+embers();
+
 (function boot() {
   const cfg = window.FIREBASE_CONFIG;
   if (!window.firebase || !cfg || !cfg.databaseURL || String(cfg.apiKey).includes('PASTE')) {
