@@ -201,7 +201,9 @@ function render() {
   else if (myTurn) tb.innerHTML = '<b>Your turn.</b> Tap a number on your grid to call it';
   else if (tk && players[tk]) tb.innerHTML = `Waiting for <b>${esc(players[tk].name)}</b> to call a number`;
   else tb.textContent = 'Waiting…';
-  $('lastcall').innerHTML = last ? `${esc(players[last.by]?.name || 'Someone')} called<span>${last.n}</span>` : 'No numbers called yet';
+  $('lastcall').innerHTML = last
+    ? `<span>${esc(players[last.by]?.name || 'Someone')} called</span><span class="ball" style="--c:var(--ball-${(last.n % 5) + 1})">${last.n}</span>`
+    : '<span>No numbers called yet</span>';
 
   if (board) {
     renderGrid($('playGrid'), board, {
@@ -221,6 +223,7 @@ function render() {
   playerList($('gamePlayers'), 'game');
 
   if (win) {
+    if ($('win').hidden) confetti();
     $('win').hidden = false;
     $('winText').textContent = win.key === pkey ? `You won in ${calls.length} calls!` : `${win.name} won this round.`;
     $('againBtn').hidden = !isHost;
@@ -368,6 +371,33 @@ $('leaveBtn2').onclick = () => leaveRoom();
 $('bingoBtn').onclick = claimBingo;
 $('againBtn').onclick = playAgain;
 $('skipBtn').onclick = () => room(code).update({ skips: (game.skips || 0) + 1 });
+/* ---------- confetti on a win ---------- */
+function confetti() {
+  try { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch {}
+  const cv = document.createElement('canvas');
+  cv.id = 'confetti'; document.body.appendChild(cv);
+  const ctx = cv.getContext('2d'), dpr = Math.min(devicePixelRatio || 1, 2);
+  const W = cv.width = innerWidth * dpr, H = cv.height = innerHeight * dpr;
+  const cs = getComputedStyle(document.documentElement);
+  const colors = [1, 2, 3, 4, 5].map(i => cs.getPropertyValue('--ball-' + i).trim()).concat(cs.getPropertyValue('--dauber').trim());
+  const bits = Array.from({ length: 140 }, () => ({
+    x: W / 2 + (Math.random() - .5) * W * .3, y: H * .35,
+    vx: (Math.random() - .5) * 18 * dpr, vy: (-Math.random() * 16 - 6) * dpr,
+    w: (6 + Math.random() * 8) * dpr, h: (4 + Math.random() * 6) * dpr,
+    r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: colors[Math.floor(Math.random() * colors.length)]
+  }));
+  const end = performance.now() + 3200;
+  (function tick(t) {
+    ctx.clearRect(0, 0, W, H);
+    bits.forEach(b => {
+      b.vy += .45 * dpr; b.vx *= .99; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.fillStyle = b.c;
+      ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); ctx.restore();
+    });
+    if (t < end) requestAnimationFrame(tick); else cv.remove();
+  })(performance.now());
+}
+
 $('copyBtn').onclick = async () => {
   const link = location.origin + location.pathname + '#' + code;
   const text = `Join my Bingo game! Room code ${code}: ${link}`;
