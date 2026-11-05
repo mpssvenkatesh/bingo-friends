@@ -88,7 +88,10 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
 .players .score { font-family: var(--display); font-size: 15px; letter-spacing: .1em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .players .score b { color: var(--pen); font-weight: normal; }
 
-.letters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.letters { display: grid; grid-template-columns: repeat(var(--n, 5), 1fr); gap: 6px; }
+.letters.ten { gap: 2px; }
+.letters.ten .letter { font-size: clamp(18px, 6.4vw, 30px); }
+.letters.ten .letter::after { height: 3px; }
 .letter { position: relative; text-align: center; font-family: var(--display); font-size: clamp(34px, 11vw, 52px); line-height: 1.1; color: var(--ink); transition: color .3s; }
 .letter::after {
   content: ""; position: absolute; left: 8%; right: 8%; top: 50%; height: 5px;
@@ -105,17 +108,28 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
 .lastcall span { font-family: var(--display); font-size: 30px; color: var(--pen); vertical-align: middle; margin-left: 6px; }
 
 .board { position: relative; width: 100%; aspect-ratio: 1; max-width: 100%; }
-.grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(5, 1fr); border: 3px solid var(--ink); border-radius: 6px; overflow: hidden; background: var(--paper); }
+.grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--n, 5), 1fr); gap: 2px; border: 3px solid var(--ink); border-radius: 6px; overflow: hidden; background: var(--ink); }
+.grid.ten { gap: 1px; }
 .cell {
   all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
-  border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+  background: var(--paper);
   font-family: var(--hand); font-size: clamp(26px, 8.5vw, 40px); color: var(--ink);
   position: relative; user-select: none; -webkit-tap-highlight-color: transparent; font-variant-numeric: tabular-nums;
 }
 .cell.tap { cursor: pointer; }
 .cell.tap:hover { background: color-mix(in srgb, var(--gold) 14%, var(--paper)); }
-.cell:nth-child(5n) { border-right: none; }
-.cell:nth-child(n+21) { border-bottom: none; }
+.grid.ten .cell { font-size: clamp(13px, 4vw, 20px); }
+.grid.ten .cell.empty { font-size: 12px; }
+.grid.ten .cell.hit::before, .grid.ten .cell.hit::after { height: 2px; width: 62%; }
+.grid.ten .cell.last { box-shadow: inset 0 0 0 2px var(--gold); }
+.lines.ten line { stroke-width: .16; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mode { font-family: var(--hand); font-size: 19px; padding: 10px; border-radius: 10px; border: 2px solid var(--ink-soft); background: var(--paper); color: var(--ink); cursor: pointer; line-height: 1.2; }
+.mode small { display: block; font-size: 15px; color: var(--ink-soft); }
+.mode.on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.mode.on small { color: var(--rule); }
+.mode:disabled { cursor: default; }
+.mode:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 .cell:focus-visible { outline: 3px solid var(--gold); outline-offset: -5px; }
 .cell.empty { color: var(--ink-soft); font-size: 18px; }
 .cell.hit { background: var(--hit); color: var(--ink-soft); }
@@ -170,7 +184,8 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
       <p>1. One person creates a room and shares the 4-letter code.</p>
       <p>2. Everyone arranges 1–25 on their own grid and presses Ready. Up to 15 players per room.</p>
       <p>3. Take turns: on your turn, tap a number to call it. It gets struck on everyone's grid.</p>
-      <p>4. Each full row, column or diagonal strikes a letter of BINGO. Strike all 5 and press Call BINGO first to win.</p>
+      <p>4. Each full row, column or diagonal strikes a letter. Strike them all and press the call button first to win.</p>
+      <p>Modes: 5 × 5 uses 1–25 and BINGO (5 lines). 10 × 10 uses 1–100 and BINGO CHIPS (10 lines). The host picks the mode in the room.</p>
     </div>
   </section>
 
@@ -180,6 +195,14 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
     <div class="panel">
       <h2>Players</h2>
       <ul class="players" id="lobbyPlayers"></ul>
+    </div>
+    <div class="panel">
+      <h2>Game mode</h2>
+      <div class="modes">
+        <button class="mode" id="mode5" data-size="5">5 × 5<small>1–25 · BINGO</small></button>
+        <button class="mode" id="mode10" data-size="10">10 × 10<small>1–100 · BINGO CHIPS</small></button>
+      </div>
+      <p class="note" id="modeNote" style="text-align:left"></p>
     </div>
     <p class="note" id="lobbyStatus"></p>
     <div class="board">
@@ -202,7 +225,6 @@ input[type=text]:focus-visible { outline: 3px solid var(--gold); outline-offset:
   <!-- GAME -->
   <section class="view" id="game" hidden>
     <div class="letters" id="letters" aria-label="Lines completed">
-      <div class="letter">B</div><div class="letter">I</div><div class="letter">N</div><div class="letter">G</div><div class="letter">O</div>
     </div>
     <div class="turnbar" id="turnbar"></div>
     <div class="lastcall" id="lastcall"></div>

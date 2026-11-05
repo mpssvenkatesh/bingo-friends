@@ -1,12 +1,20 @@
-/* 1–25 Bingo — live multiplayer over Firebase Realtime Database.
+/* Bingo (5x5 BINGO and 10x10 BINGO CHIPS) — live multiplayer over Firebase Realtime Database.
    Data: rooms/{CODE} = { hostKey, status, round, order[], skips, createdAt,
                           players: { pid: {name, joinedAt, round, board[], bingoAt, bingoRound} },
                           calls:   { r{round}: { n{num}: {n, by, at} } } } */
 
-const LINES = [];
-for (let r = 0; r < 5; r++) LINES.push([0,1,2,3,4].map(c => r*5+c));
-for (let c = 0; c < 5; c++) LINES.push([0,1,2,3,4].map(r => r*5+c));
-LINES.push([0,6,12,18,24], [4,8,12,16,20]);
+// Lines (rows, columns, two diagonals) for a 5x5 or 10x10 grid.
+const LINE_CACHE = {};
+function linesFor(n) {
+  if (LINE_CACHE[n]) return LINE_CACHE[n];
+  const idx = [...Array(n).keys()], L = [];
+  idx.forEach(r => L.push(idx.map(c => r * n + c)));
+  idx.forEach(c => L.push(idx.map(r => r * n + c)));
+  L.push(idx.map(i => i * n + i), idx.map(i => i * n + (n - 1 - i)));
+  return (LINE_CACHE[n] = L);
+}
+const WORDS = { 5: 'BINGO', 10: 'BINGOCHIPS' };
+const CALL_LABEL = { 5: 'BINGO', 10: 'BINGO CHIPS' };
 const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const MAX_PLAYERS = 15;
 
@@ -27,15 +35,16 @@ if (!pkey) {
 let rdb = null, TS = null;
 let code = null, game = null, players = {}, calls = [];
 let roomRef = null;
-let draft = shuffled(), fillMode = false, nextFill = 0;
+let draft = shuffled(5), fillMode = false, nextFill = 0;
 let busy = false, view = 'home';
 
-function shuffled() {
-  const a = Array.from({length: 25}, (_, i) => i + 1);
+function shuffled(n) {
+  const a = Array.from({length: n * n}, (_, i) => i + 1);
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
-const linesDone = (board, called) => Array.isArray(board) ? LINES.filter(l => l.every(i => called.has(board[i]))) : [];
+const sideOf = board => Math.round(Math.sqrt(board.length));
+const linesDone = (board, called) => Array.isArray(board) && board.length >= 25 ? linesFor(sideOf(board)).filter(l => l.every(i => called.has(board[i]))) : [];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const room = c => rdb.ref('rooms/' + c);
 
@@ -46,11 +55,14 @@ function show(v) {
 
 /* ---------- derived game state ---------- */
 function round() { return game?.round || 1; }
+function N() { return game?.size === 10 ? 10 : 5; }
+function WORD() { return WORDS[N()]; }
+const fitsMode = b => Array.isArray(b) && b.length === N() * N();
 function me() { return players[pkey]; }
-function myBoard() { const p = me(); return p && p.round === round() && Array.isArray(p.board) ? p.board : null; }
+function myBoard() { const p = me(); return p && p.round === round() && fitsMode(p.board) ? p.board : null; }
 function calledSet() { return new Set(calls.map(c => c.n)); }
 function readyPlayers() {
-  return Object.values(players).filter(p => p.round === round() && Array.isArray(p.board)).sort((a, b) => a.joinedAt - b.joinedAt);
+  return Object.values(players).filter(p => p.round === round() && fitsMode(p.board)).sort((a, b) => a.joinedAt - b.joinedAt);
 }
 function turnKey() {
   const order = game?.order || [];
@@ -61,13 +73,16 @@ function winner() {
   const called = calledSet();
   const claims = Object.values(players)
     .filter(p => p.bingoRound === round() && p.round === round() && p.bingoAt && (game.order || []).includes(p.key))
-    .filter(p => linesDone(p.board, called).length >= 5)
+    .filter(p => fitsMode(p.board) && linesDone(p.board, called).length >= WORD().length)
     .sort((a, b) => a.bingoAt - b.bingoAt);
   return claims[0] || null;
 }
 
 /* ---------- rendering ---------- */
 function renderGrid(el, board, opts) {
+  const n = sideOf(board);
+  el.style.setProperty('--n', n);
+  el.classList.toggle('ten', n === 10);
   el.innerHTML = '';
   board.forEach((n, i) => {
     const b = document.createElement('button');
@@ -91,22 +106,24 @@ function playerList(el, mode) {
     ? (game.order || []).map(k => players[k]).filter(Boolean)
     : Object.values(players).filter(p => p.round === round() || p.key === game?.hostKey || p.key === pkey).sort((a, b) => a.joinedAt - b.joinedAt);
   el.innerHTML = list.map(p => {
-    const ready = p.round === round() && Array.isArray(p.board);
+    const ready = p.round === round() && fitsMode(p.board);
     const tags = [p.key === game.hostKey ? 'host' : '', p.key === pkey ? 'you' : ''].filter(Boolean).join(' · ');
     let right = '';
     if (mode === 'game') {
-      const n = Math.min(linesDone(p.board, called).length, 5);
-      right = `<span class="score"><b>${'BINGO'.slice(0, n)}</b>${'BINGO'.slice(n)}</span>`;
+      const w = WORD(), n = Math.min(linesDone(p.board, called).length, w.length);
+      right = `<span class="score"><b>${w.slice(0, n)}</b>${w.slice(n)}</span>`;
     }
     const dot = mode === 'game' ? (p.key === tk ? 'on' : '') : (ready ? 'on' : '');
     return `<li><span class="dot ${dot}"></span><span class="name">${esc(p.name)}${mode === 'game' && p.key === tk ? ' <span class="turn">· calling</span>' : ''}</span>${tags ? `<span class="tag">${tags}</span>` : ''}${right}</li>`;
   }).join('') || '<li class="tag">Nobody here yet</li>';
 }
 
-function drawLines(svg, done) {
+function drawLines(svg, done, n) {
+  svg.setAttribute('viewBox', `0 0 ${n} ${n}`);
+  svg.classList.toggle('ten', n === 10);
   svg.innerHTML = done.map(l => {
-    const a = l[0], z = l[4];
-    const ax = a % 5 + .5, ay = Math.floor(a / 5) + .5, zx = z % 5 + .5, zy = Math.floor(z / 5) + .5;
+    const a = l[0], z = l[l.length - 1];
+    const ax = a % n + .5, ay = Math.floor(a / n) + .5, zx = z % n + .5, zy = Math.floor(z / n) + .5;
     const dx = (zx - ax) * .1, dy = (zy - ay) * .1;
     return `<line x1="${ax - dx}" y1="${ay - dy}" x2="${zx + dx}" y2="${zy + dy}"/>`;
   }).join('');
@@ -121,6 +138,12 @@ function render() {
     $('win').hidden = true;
     $('lobbyCode').textContent = code;
     playerList($('lobbyPlayers'), 'lobby');
+    if (draft.length !== N() * N()) { draft = shuffled(N()); fillMode = false; nextFill = 0; }
+    ['mode5', 'mode10'].forEach(id => {
+      const b = $(id), on = +b.dataset.size === N();
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.disabled = !isHost;
+    });
+    $('modeNote').textContent = isHost ? 'Changing the mode asks everyone to arrange a new grid.' : 'The host picks the mode.';
     const mine = myBoard();
     renderGrid($('setupGrid'), mine || draft, {
       canTap: (n) => !mine && fillMode && n == null,
@@ -135,7 +158,7 @@ function render() {
     $('startBtn').disabled = ready.length < 2 || !mine;
     let s;
     if (full) s = `This room is full (${MAX_PLAYERS} players). You can join the next round.`;
-    else if (!mine && fillMode && nextFill < 25) s = `Tap a box to place ${nextFill + 1}`;
+    else if (!mine && fillMode && nextFill < N() * N()) s = `Tap a box to place ${nextFill + 1}`;
     else if (!mine) s = 'Arrange your numbers, then press I\'m ready';
     else if (isHost) s = ready.length < 2 ? 'Waiting for at least one more player to get ready' : `${ready.length} of ${MAX_PLAYERS} players ready. Start when everyone's in`;
     else s = 'You\'re ready. Waiting for the host to start';
@@ -149,17 +172,27 @@ function render() {
   const called = calledSet();
   const board = inGame ? myBoard() : null;
   const done = board ? linesDone(board, called) : [];
-  const count = Math.min(done.length, 5);
+  const W = WORD();
+  const count = Math.min(done.length, W.length);
   const win = winner();
   const tk = turnKey();
   const myTurn = inGame && tk === pkey && !win;
   const last = calls.length ? calls[calls.length - 1] : null;
 
-  [...$('letters').children].forEach((el, i) => el.classList.toggle('struck', i < count));
+  const lettersEl = $('letters');
+  if (lettersEl.dataset.word !== W) {
+    lettersEl.dataset.word = W;
+    lettersEl.style.setProperty('--n', W.length);
+    lettersEl.classList.toggle('ten', W.length === 10);
+    lettersEl.innerHTML = [...W].map(ch => `<div class="letter">${ch}</div>`).join('');
+  }
+  [...lettersEl.children].forEach((el, i) => el.classList.toggle('struck', i < count));
+  $('bingoBtn').textContent = `Call ${CALL_LABEL[N()]}!`;
+  document.querySelector('#win h2').textContent = `${CALL_LABEL[N()]}!`;
 
   const tb = $('turnbar');
   tb.classList.toggle('mine', myTurn);
-  if (win) tb.innerHTML = `<b>${esc(win.name)}</b> called BINGO!`;
+  if (win) tb.innerHTML = `<b>${esc(win.name)}</b> called ${CALL_LABEL[N()]}!`;
   else if (myTurn) tb.innerHTML = '<b>Your turn.</b> Tap a number on your grid to call it';
   else if (tk && players[tk]) tb.innerHTML = `Waiting for <b>${esc(players[tk].name)}</b> to call a number`;
   else tb.textContent = 'Waiting…';
@@ -171,14 +204,14 @@ function render() {
       canTap: (n) => myTurn && !busy && !called.has(n),
       onTap: (n) => callNumber(n)
     });
-    drawLines($('lines'), done);
+    drawLines($('lines'), done, N());
   } else {
     $('playGrid').innerHTML = ''; $('lines').innerHTML = '';
   }
   $('gameNote').textContent = inGame ? '' : 'This game started before you joined. You can play in the next round.';
 
   const claimed = me()?.bingoRound === round();
-  $('bingoBtn').hidden = !(inGame && count >= 5 && !win && !claimed);
+  $('bingoBtn').hidden = !(inGame && count >= W.length && !win && !claimed);
   $('skipBtn').hidden = !(isHost && !win && tk && tk !== pkey);
   playerList($('gamePlayers'), 'game');
 
@@ -200,7 +233,7 @@ function subscribeRoom(c) {
   roomRef.on('value', snap => {
     const v = snap.val();
     if (!v) { leaveRoom('That room no longer exists.'); return; }
-    game = { hostKey: v.hostKey, status: v.status, round: v.round || 1, order: v.order || [], skips: v.skips || 0 };
+    game = { hostKey: v.hostKey, status: v.status, round: v.round || 1, order: v.order || [], skips: v.skips || 0, size: v.size === 10 ? 10 : 5 };
     players = {};
     Object.entries(v.players || {}).forEach(([k, p]) => { players[k] = Object.assign({ key: k }, p); });
     calls = Object.values((v.calls || {})['r' + game.round] || {})
@@ -232,7 +265,7 @@ async function joinRoom(c, isCreate) {
     $('homeNote').textContent = 'Couldn\'t join the room. Check your connection and try again.';
     return;
   }
-  draft = shuffled(); fillMode = false; nextFill = 0;
+  draft = shuffled(5); fillMode = false; nextFill = 0;
   $('homeNote').textContent = '';
   subscribeRoom(c);
 }
@@ -247,7 +280,7 @@ async function createRoom() {
       c = Array.from({length: 4}, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
       if (!(await room(c).child('hostKey').get()).exists()) break;
     }
-    await room(c).set({ hostKey: pkey, status: 'lobby', round: 1, skips: 0, createdAt: TS });
+    await room(c).set({ hostKey: pkey, status: 'lobby', round: 1, skips: 0, size: 5, createdAt: TS });
     await joinRoom(c, true);
   } catch {
     $('homeNote').textContent = 'Couldn\'t create the room. Try again.';
@@ -297,8 +330,15 @@ async function claimBingo() {
   catch { $('bingoBtn').hidden = false; }
 }
 
+async function setMode(size) {
+  if (!game || game.hostKey !== pkey || game.status !== 'lobby' || N() === size) return;
+  draft = shuffled(size); fillMode = false; nextFill = 0;
+  try { await room(code).update({ size }); }
+  catch { $('lobbyStatus').textContent = 'Couldn\'t change the mode. Try again.'; }
+}
+
 async function playAgain() {
-  draft = shuffled(); fillMode = false; nextFill = 0;
+  draft = shuffled(N()); fillMode = false; nextFill = 0;
   const old = round();
   await room(code).update({ status: 'lobby', round: old + 1, order: null, skips: 0, ['calls/r' + old]: null });
 }
@@ -310,8 +350,10 @@ $('codeInput').addEventListener('input', e => { e.target.value = e.target.value.
 $('createBtn').onclick = createRoom;
 $('joinBtn').onclick = () => { const c = $('codeInput').value.trim(); if (c.length === 4) joinRoom(c, false); else $('homeNote').textContent = 'Room codes have 4 letters.'; };
 $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
-$('shuffleBtn').onclick = () => { draft = shuffled(); fillMode = false; nextFill = 0; render(); };
-$('manualBtn').onclick = () => { draft = Array(25).fill(null); fillMode = true; nextFill = 0; render(); };
+$('mode5').onclick = () => setMode(5);
+$('mode10').onclick = () => setMode(10);
+$('shuffleBtn').onclick = () => { draft = shuffled(N()); fillMode = false; nextFill = 0; render(); };
+$('manualBtn').onclick = () => { draft = Array(N() * N()).fill(null); fillMode = true; nextFill = 0; render(); };
 $('readyBtn').onclick = () => setReady(true);
 $('unreadyBtn').onclick = () => setReady(false);
 $('startBtn').onclick = startGame;
