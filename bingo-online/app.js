@@ -1,4 +1,4 @@
-/* Bingo Diwali edition (5x5 BINGO, 7x7 FRIENDS, 10x10 BINGO CHIPS) — live multiplayer over Firebase Realtime Database.
+/* Bingo Friends (5x5 BINGO, 7x7 FRIENDS, 10x10 BINGO CHIPS; Diwali, Christmas, Cricket, Halloween and Space themes) — live multiplayer over Firebase Realtime Database.
    Data: rooms/{CODE} = { hostKey, status, round, order[], skips, createdAt,
                           players: { pid: {name, joinedAt, round, board[], bingoAt, bingoRound} },
                           calls:   { r{round}: { n{num}: {n, by, at} } } } */
@@ -149,6 +149,8 @@ function render() {
       b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.disabled = !isHost;
     });
     $('modeNote').textContent = isHost ? 'Changing the mode asks everyone to arrange a new grid.' : 'The host picks the mode.';
+    renderThemePicker($('lobbyThemes'));
+    $('themeNote').textContent = isHost ? 'Everyone in the room switches to the theme you pick.' : 'The host picks the theme.';
     const mine = myBoard();
     renderGrid($('setupGrid'), mine || draft, {
       canTap: (n) => !mine && fillMode && n == null,
@@ -225,10 +227,14 @@ function render() {
   const claimed = me()?.bingoRound === round();
   $('bingoBtn').hidden = !(inGame && count >= W.length && !win && !claimed);
   $('skipBtn').hidden = !(isHost && !win && tk && tk !== pkey);
+  $('themeBtn').hidden = !isHost;
+  if (!isHost) $('gameThemePanel').hidden = true;
+  renderThemePicker($('gameThemes'));
   playerList($('gamePlayers'), 'game');
 
   if (win) {
-    if ($('win').hidden) fireworks();
+    document.querySelector('#win .greet').textContent = THEMES[themeOf(game.theme)].greet;
+    if ($('win').hidden) celebrate(themeOf(game.theme));
     $('win').hidden = false;
     $('winText').textContent = win.key === pkey ? `You won in ${calls.length} calls!` : `${win.name} won this round.`;
     $('againBtn').hidden = !isHost;
@@ -251,7 +257,8 @@ function subscribeRoom(c) {
     const key = JSON.stringify(rest);
     if (key === lastRoomKey) return;
     lastRoomKey = key;
-    game = { hostKey: v.hostKey, status: v.status, round: v.round || 1, order: v.order || [], skips: v.skips || 0, size: sizeOf(v.size) };
+    game = { hostKey: v.hostKey, status: v.status, round: v.round || 1, order: v.order || [], skips: v.skips || 0, size: sizeOf(v.size), theme: themeOf(v.theme) };
+    applySkin(game.theme);
     players = {};
     Object.entries(v.players || {}).forEach(([k, p]) => { players[k] = Object.assign({ key: k }, p); });
     calls = Object.values((v.calls || {})['r' + game.round] || {})
@@ -386,6 +393,7 @@ function leaveRoom(msg) {
   store.del('bingo.room');
   try { history.replaceState(null, '', location.pathname + location.search); } catch {}
   show('home');
+  applySkin('diwali'); $('gameThemePanel').hidden = true;
   $('win').hidden = true;
   $('homeNote').textContent = msg || '';
 }
@@ -456,63 +464,238 @@ $('leaveBtn2').onclick = () => leaveRoom();
 $('bingoBtn').onclick = claimBingo;
 $('againBtn').onclick = playAgain;
 $('skipBtn').onclick = () => room(code).update({ skips: (game.skips || 0) + 1 });
-/* ---------- Diwali effects: rising embers and win fireworks ---------- */
+$('themeBtn').onclick = () => { const p = $('gameThemePanel'); p.hidden = !p.hidden; $('themeBtn').setAttribute('aria-expanded', String(!p.hidden)); };
+/* ---------- Themes: background ambience and win celebrations ---------- */
+const THEMES = {
+  diwali:    { name: 'Diwali',    greet: 'Shubh Deepavali!' },
+  christmas: { name: 'Christmas', greet: 'Merry Christmas!' },
+  cricket:   { name: 'Cricket',   greet: 'What a SIXER!' },
+  halloween: { name: 'Halloween', greet: 'Spooktacular win!' },
+  space:     { name: 'Space',     greet: 'Mission complete!' }
+};
+const themeOf = t => THEMES[t] ? t : 'diwali';
 const calm = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } })();
 const fxColors = () => { const cs = getComputedStyle(document.documentElement); return ['--gold', '--marigold', '--rani', '--ball-4', '--ball-5', '--cream'].map(v => cs.getPropertyValue(v).trim()); };
+const rnd = (a, b) => a + Math.random() * (b - a);
 
-function embers() {
-  const cv = $('embers'); if (!cv || calm) return;
+function applySkin(t) {
+  t = themeOf(t);
+  if (document.documentElement.dataset.skin === t) return;
+  document.documentElement.dataset.skin = t;
+  startAmbient(t);
+}
+
+function drawBat(ctx, x, y, s, flap, color) {
+  const w = Math.sin(flap) * .6;
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(0, 0, 2.2, 3.2, 0, 0, 6.29); ctx.fill();
+  for (const dir of [-1, 1]) {
+    ctx.beginPath(); ctx.moveTo(0, -1);
+    ctx.quadraticCurveTo(dir * 6, -6 - w * 6, dir * 13, -2 - w * 8);
+    ctx.quadraticCurveTo(dir * 10, 0, dir * 9, 3 - w * 2);
+    ctx.quadraticCurveTo(dir * 6, 1, dir * 4.5, 4);
+    ctx.quadraticCurveTo(dir * 3, 1.5, 0, 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawStar(ctx, x, y, r, rot, color) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = color; ctx.beginPath();
+  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? r * .45 : r; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+/* One looping canvas behind the page; its contents depend on the theme */
+let ambientRaf = 0;
+function startAmbient(skin) {
+  cancelAnimationFrame(ambientRaf);
+  const cv = $('embers'); if (!cv) return;
   const ctx = cv.getContext('2d'); let W, H, dpr;
   const size = () => { dpr = Math.min(devicePixelRatio || 1, 2); W = cv.width = innerWidth * dpr; H = cv.height = innerHeight * dpr; };
-  size(); addEventListener('resize', size);
-  const make = (y) => ({ x: Math.random() * W, y: y ?? H + Math.random() * H * .3, r: (1 + Math.random() * 2.2) * dpr,
-    vy: (.25 + Math.random() * .6) * dpr, sway: Math.random() * 6.28, a: .3 + Math.random() * .6 });
-  const bits = Array.from({ length: 46 }, () => make(Math.random() * H));
-  (function tick() {
-    if (!document.hidden) {
-      ctx.clearRect(0, 0, W, H);
-      for (const b of bits) {
-        b.y -= b.vy; b.sway += .02; b.x += Math.sin(b.sway) * .3 * dpr;
-        if (b.y < -10) Object.assign(b, make());
-        const tw = .6 + .4 * Math.sin(b.sway * 3);
-        const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 4);
-        g.addColorStop(0, `rgba(255,214,120,${b.a * tw})`); g.addColorStop(1, 'rgba(255,154,31,0)');
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 4, 0, 6.29); ctx.fill();
+  size(); window.onresize = size;
+  ctx.clearRect(0, 0, W, H);
+  if (calm) return;
+  let parts = [], draw;
+
+  if (skin === 'christmas') {
+    const make = y => ({ x: rnd(0, W), y: y ?? -10, r: rnd(1, 3.4) * dpr, vy: rnd(.4, 1.3) * dpr, sw: rnd(0, 6.28), a: rnd(.5, .95) });
+    parts = Array.from({ length: 80 }, () => make(rnd(0, H)));
+    draw = () => { for (const p of parts) {
+      p.y += p.vy; p.sw += .015; p.x += Math.sin(p.sw) * .5 * dpr;
+      if (p.y > H + 10) Object.assign(p, make());
+      ctx.globalAlpha = p.a; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29); ctx.fill();
+    } ctx.globalAlpha = 1; };
+  } else if (skin === 'cricket') {
+    draw = () => {
+      if (Math.random() < .035) parts.push({ x: rnd(0, W), y: rnd(0, H * .3), life: 1, r: rnd(10, 26) * dpr });
+      for (const p of parts) {
+        p.life -= .06; if (p.life <= 0) continue;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+        g.addColorStop(0, `rgba(255,255,240,${p.life})`); g.addColorStop(1, 'rgba(255,255,240,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29); ctx.fill();
       }
-    }
-    requestAnimationFrame(tick);
+      parts = parts.filter(p => p.life > 0);
+    };
+  } else if (skin === 'halloween') {
+    const makeBat = () => { const dir = Math.random() < .5 ? 1 : -1; return { bat: 1, dir, x: dir > 0 ? -40 * dpr : W + 40 * dpr, y: rnd(H * .08, H * .55), vx: dir * rnd(.8, 1.8) * dpr, s: rnd(1.1, 2.1) * dpr, f: rnd(0, 6.28), bob: rnd(0, 6.28) }; };
+    const makeWisp = y => ({ x: rnd(0, W), y: y ?? H + 10, r: rnd(1, 2.4) * dpr, vy: rnd(.2, .5) * dpr, sw: rnd(0, 6.28), a: rnd(.25, .6) });
+    parts = Array.from({ length: 5 }, makeBat).concat(Array.from({ length: 24 }, () => makeWisp(rnd(0, H))));
+    parts.forEach(p => { if (p.bat) p.x = rnd(0, W); });
+    draw = () => { for (const p of parts) {
+      if (p.bat) {
+        p.x += p.vx; p.f += .35; p.bob += .04; const y = p.y + Math.sin(p.bob) * 12 * dpr;
+        if (p.x < -60 * dpr || p.x > W + 60 * dpr) Object.assign(p, makeBat());
+        drawBat(ctx, p.x, y, p.s, p.f, 'rgba(10,4,18,.85)');
+      } else {
+        p.y -= p.vy; p.sw += .02; p.x += Math.sin(p.sw) * .3 * dpr;
+        if (p.y < -10) Object.assign(p, makeWisp());
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 5);
+        g.addColorStop(0, `rgba(160,255,140,${p.a})`); g.addColorStop(1, 'rgba(160,255,140,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 5, 0, 6.29); ctx.fill();
+      }
+    } };
+  } else if (skin === 'space') {
+    parts = Array.from({ length: 110 }, () => ({ x: rnd(0, W), y: rnd(0, H), r: rnd(.5, 1.8) * dpr, v: rnd(.05, .35) * dpr, tw: rnd(0, 6.28) }));
+    let shoot = null;
+    draw = () => {
+      for (const p of parts) {
+        p.x -= p.v; p.tw += .05; if (p.x < -2) { p.x = W + 2; p.y = rnd(0, H); }
+        ctx.globalAlpha = .45 + .55 * Math.abs(Math.sin(p.tw)); ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (!shoot && Math.random() < .004) shoot = { x: rnd(W * .3, W), y: rnd(0, H * .4), life: 1 };
+      if (shoot) {
+        shoot.x -= 14 * dpr; shoot.y += 6 * dpr; shoot.life -= .03;
+        const g = ctx.createLinearGradient(shoot.x, shoot.y, shoot.x + 120 * dpr, shoot.y - 52 * dpr);
+        g.addColorStop(0, `rgba(180,250,255,${shoot.life})`); g.addColorStop(1, 'rgba(180,250,255,0)');
+        ctx.strokeStyle = g; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(shoot.x, shoot.y); ctx.lineTo(shoot.x + 120 * dpr, shoot.y - 52 * dpr); ctx.stroke();
+        if (shoot.life <= 0) shoot = null;
+      }
+    };
+  } else {
+    const make = y => ({ x: rnd(0, W), y: y ?? H + rnd(0, H * .3), r: rnd(1, 3.2) * dpr, vy: rnd(.25, .85) * dpr, sw: rnd(0, 6.28), a: rnd(.3, .9) });
+    parts = Array.from({ length: 46 }, () => make(rnd(0, H)));
+    draw = () => { for (const b of parts) {
+      b.y -= b.vy; b.sw += .02; b.x += Math.sin(b.sw) * .3 * dpr;
+      if (b.y < -10) Object.assign(b, make());
+      const tw = .6 + .4 * Math.sin(b.sw * 3);
+      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r * 4);
+      g.addColorStop(0, `rgba(255,214,120,${b.a * tw})`); g.addColorStop(1, 'rgba(255,154,31,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 4, 0, 6.29); ctx.fill();
+    } };
+  }
+  (function tick() {
+    if (!document.hidden) { ctx.clearRect(0, 0, W, H); draw(); }
+    ambientRaf = requestAnimationFrame(tick);
   })();
 }
 
-function fireworks() {
-  if (calm) return;
+/* A temporary full-screen canvas for a win celebration */
+function fxCanvas(ms, step, trails) {
   const cv = document.createElement('canvas'); cv.id = 'fireworks'; document.body.appendChild(cv);
   const ctx = cv.getContext('2d'), dpr = Math.min(devicePixelRatio || 1, 2);
   const W = cv.width = innerWidth * dpr, H = cv.height = innerHeight * dpr;
-  const colors = fxColors(), sparks = [];
-  const burst = () => {
-    const x = W * (.15 + Math.random() * .7), y = H * (.15 + Math.random() * .35);
-    const c = colors[Math.floor(Math.random() * colors.length)], n = 70;
-    for (let i = 0; i < n; i++) {
-      const ang = (i / n) * 6.283, sp = (2.5 + Math.random() * 3.5) * dpr;
-      sparks.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 1, c });
-    }
-  };
-  let shots = 0; burst(); shots++;
-  const timer = setInterval(() => { burst(); if (++shots >= 7) clearInterval(timer); }, 420);
-  const end = performance.now() + 4200;
+  const t0 = performance.now();
   (function tick(t) {
-    ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'lighter';
-    for (const s of sparks) {
-      if (s.life <= 0) continue;
-      s.vx *= .97; s.vy = s.vy * .97 + .06 * dpr; s.x += s.vx; s.y += s.vy; s.life -= .014;
-      ctx.globalAlpha = Math.max(s.life, 0); ctx.fillStyle = s.c;
-      ctx.beginPath(); ctx.arc(s.x, s.y, 2.2 * dpr, 0, 6.29); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    if (t < end) requestAnimationFrame(tick); else { clearInterval(timer); cv.remove(); }
-  })(performance.now());
+    if (trails) { ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; }
+    else ctx.clearRect(0, 0, W, H);
+    step(ctx, W, H, dpr, t - t0);
+    if (t - t0 < ms) requestAnimationFrame(tick); else cv.remove();
+  })(t0);
+}
+
+function celebrate(skin) {
+  if (calm) return;
+  const colors = fxColors();
+  if (skin === 'christmas') {
+    const cols = ['#d7263d', '#1e8a4c', '#f2c14e', '#ffffff'];
+    let bits = [];
+    fxCanvas(4200, (ctx, W, H, dpr, el) => {
+      if (!bits.length) bits = Array.from({ length: 130 }, () => ({ x: rnd(0, W), y: rnd(-H, 0), vy: rnd(2, 5) * dpr, vx: rnd(-1, 1) * dpr, r: rnd(5, 11) * dpr, rot: rnd(0, 6), vr: rnd(-.08, .08), star: Math.random() < .45, c: cols[Math.floor(rnd(0, 4))] }));
+      for (const b of bits) {
+        b.y += b.vy; b.x += b.vx; b.rot += b.vr;
+        if (b.star) drawStar(ctx, b.x, b.y, b.r, b.rot, b.c === '#ffffff' ? '#f2c14e' : b.c);
+        else { ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot); ctx.fillStyle = b.c; ctx.fillRect(-b.r, -b.r, b.r * 2, b.r * 2);
+          ctx.fillStyle = b.c === '#f2c14e' ? '#d7263d' : '#f2c14e'; ctx.fillRect(-b.r * .18, -b.r, b.r * .36, b.r * 2); ctx.fillRect(-b.r, -b.r * .18, b.r * 2, b.r * .36); ctx.restore(); }
+      }
+    });
+  } else if (skin === 'cricket') {
+    const cols = ['#ff8c1a', '#ffffff', '#1d8a3a', '#1d3a66', '#ffd23f'];
+    let bits = [];
+    fxCanvas(4000, (ctx, W, H, dpr, el) => {
+      if (el < 350) { ctx.fillStyle = `rgba(255,255,240,${.6 * (1 - el / 350)})`; ctx.fillRect(0, 0, W, H); }
+      if (el < 1200 && Math.random() < .9) for (const side of [0, 1]) for (let i = 0; i < 4; i++) {
+        const ang = side ? rnd(-2.6, -2.0) : rnd(-1.1, -0.55), sp = rnd(10, 18) * dpr;
+        bits.push({ x: side ? W : 0, y: H, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, w: rnd(5, 10) * dpr, h: rnd(3, 6) * dpr, rot: rnd(0, 6), vr: rnd(-.3, .3), c: cols[Math.floor(rnd(0, 5))] });
+      }
+      for (const b of bits) {
+        b.vy += .28 * dpr; b.vx *= .99; b.x += b.vx; b.y += b.vy; b.rot += b.vr;
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot); ctx.fillStyle = b.c; ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); ctx.restore();
+      }
+    });
+  } else if (skin === 'halloween') {
+    let bats = [];
+    fxCanvas(3800, (ctx, W, H, dpr, el) => {
+      if (!bats.length) bats = Array.from({ length: 46 }, () => { const a = rnd(0, 6.28), sp = rnd(1.5, 4.5) * dpr; return { x: W / 2, y: H * .45, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.2 * dpr, s: rnd(1.4, 3.2) * dpr, f: rnd(0, 6.28) }; });
+      for (const b of bats) { b.vx *= 1.012; b.vy *= 1.012; b.x += b.vx; b.y += b.vy; b.f += .45; drawBat(ctx, b.x, b.y, b.s, b.f, '#120618'); }
+    });
+  } else if (skin === 'space') {
+    let rocket = null, sparks = [], burst = false;
+    fxCanvas(4300, (ctx, W, H, dpr, el) => {
+      if (!rocket) rocket = { x: W / 2, y: H + 40 * dpr };
+      if (!burst) {
+        rocket.y -= (6 + el / 120) * dpr;
+        for (let i = 0; i < 4; i++) sparks.push({ x: rocket.x + rnd(-5, 5) * dpr, y: rocket.y + 34 * dpr, vx: rnd(-1, 1) * dpr, vy: rnd(2, 5) * dpr, life: 1, c: Math.random() < .5 ? '#ffe066' : '#ff8ae0' });
+        const r = rocket, s = dpr;
+        ctx.save(); ctx.translate(r.x, r.y);
+        ctx.fillStyle = '#e6ecff'; ctx.beginPath(); ctx.moveTo(0, -34 * s); ctx.quadraticCurveTo(14 * s, -10 * s, 11 * s, 24 * s); ctx.lineTo(-11 * s, 24 * s); ctx.quadraticCurveTo(-14 * s, -10 * s, 0, -34 * s); ctx.fill();
+        ctx.fillStyle = '#5ef2ff'; ctx.beginPath(); ctx.arc(0, -6 * s, 5 * s, 0, 6.29); ctx.fill();
+        ctx.fillStyle = '#ff8ae0'; ctx.beginPath(); ctx.moveTo(-11 * s, 12 * s); ctx.lineTo(-20 * s, 30 * s); ctx.lineTo(-10 * s, 24 * s); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(11 * s, 12 * s); ctx.lineTo(20 * s, 30 * s); ctx.lineTo(10 * s, 24 * s); ctx.fill();
+        ctx.restore();
+        if (rocket.y < H * .28) {
+          burst = true;
+          for (let i = 0; i < 120; i++) { const a = i / 120 * 6.283, sp = rnd(2, 7) * dpr; sparks.push({ x: rocket.x, y: rocket.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, c: colors[Math.floor(rnd(0, colors.length))] }); }
+        }
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      for (const p of sparks) { if (p.life <= 0) continue; p.vx *= .97; p.vy *= .97; p.x += p.vx; p.y += p.vy; p.life -= .016;
+        ctx.globalAlpha = Math.max(p.life, 0); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * dpr, 0, 6.29); ctx.fill(); }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    });
+  } else {
+    const sparks = []; let shots = 0, next = 0;
+    fxCanvas(4200, (ctx, W, H, dpr, el) => {
+      if (shots < 7 && el >= next) {
+        shots++; next += 420;
+        const x = W * rnd(.15, .85), y = H * rnd(.15, .5), c = colors[Math.floor(rnd(0, colors.length))];
+        for (let i = 0; i < 70; i++) { const a = i / 70 * 6.283, sp = rnd(2.5, 6) * dpr; sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, c }); }
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      for (const s of sparks) { if (s.life <= 0) continue; s.vx *= .97; s.vy = s.vy * .97 + .06 * dpr; s.x += s.vx; s.y += s.vy; s.life -= .014;
+        ctx.globalAlpha = Math.max(s.life, 0); ctx.fillStyle = s.c; ctx.beginPath(); ctx.arc(s.x, s.y, 2.2 * dpr, 0, 6.29); ctx.fill(); }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    }, true);
+  }
+}
+
+/* ---------- theme picker (host chooses, everyone follows) ---------- */
+function renderThemePicker(el) {
+  if (!el.children.length) {
+    el.innerHTML = Object.entries(THEMES).map(([k, t]) =>
+      `<button type="button" class="theme-opt" data-theme="${k}" aria-pressed="false"><span class="sw sw-${k}" aria-hidden="true"></span>${t.name}</button>`).join('');
+    el.addEventListener('click', e => { const b = e.target.closest('.theme-opt'); if (b && !b.disabled) setTheme(b.dataset.theme); });
+  }
+  const cur = themeOf(game?.theme), isHost = game?.hostKey === pkey;
+  [...el.children].forEach(b => { const on = b.dataset.theme === cur; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); b.disabled = !isHost; });
+}
+
+async function setTheme(t) {
+  if (!game || game.hostKey !== pkey || themeOf(game.theme) === t) return;
+  applySkin(t);
+  try { await room(code).update({ theme: t }); } catch { applySkin(game.theme); }
 }
 
 $('chatFab').onclick = openChat;
@@ -537,7 +720,7 @@ $('copyBtn').onclick = async () => {
 };
 
 /* ---------- start ---------- */
-embers();
+startAmbient('diwali');
 
 (function boot() {
   const cfg = window.FIREBASE_CONFIG;
