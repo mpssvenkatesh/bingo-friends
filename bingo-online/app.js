@@ -36,7 +36,8 @@ if (!pkey) {
 
 let rdb = null, TS = null;
 let code = null, game = null, players = {}, calls = [];
-let roomRef = null;
+let roomRef = null, lastRoomKey = '', lastCallKey = '';
+let chatQuery = null, chatLoaded = false, chatOpen = false, unread = 0, lastSent = 0;
 let draft = shuffled(5), fillMode = false, nextFill = 0;
 let busy = false, view = 'home';
 
@@ -201,9 +202,13 @@ function render() {
   else if (myTurn) tb.innerHTML = '<b>Your turn.</b> Tap a number on your grid to call it';
   else if (tk && players[tk]) tb.innerHTML = `Waiting for <b>${esc(players[tk].name)}</b> to call a number`;
   else tb.textContent = 'Waiting…';
-  $('lastcall').innerHTML = last
-    ? `<span>${esc(players[last.by]?.name || 'Someone')} called</span><span class="ball" style="--c:var(--ball-${(last.n % 5) + 1})">${last.n}</span>`
-    : '<span>No numbers called yet</span>';
+  const callKey = last ? round() + ':' + last.n : 'none';
+  if (callKey !== lastCallKey) {
+    lastCallKey = callKey;
+    $('lastcall').innerHTML = last
+      ? `<span>${esc(players[last.by]?.name || 'Someone')} called</span><span class="ball" style="--c:var(--ball-${(last.n % 5) + 1})">${last.n}</span>`
+      : '<span>No numbers called yet</span>';
+  }
 
   if (board) {
     renderGrid($('playGrid'), board, {
@@ -237,10 +242,15 @@ function subscribeRoom(c) {
   code = c; game = null; players = {}; calls = [];
   store.set('bingo.room', c);
   try { if (location.hash !== '#' + c) history.replaceState(null, '', '#' + c); } catch {}
+  lastRoomKey = ''; lastCallKey = '';
   roomRef = room(c);
   roomRef.on('value', snap => {
     const v = snap.val();
     if (!v) { leaveRoom('That room no longer exists.'); return; }
+    const { chat, ...rest } = v;
+    const key = JSON.stringify(rest);
+    if (key === lastRoomKey) return;
+    lastRoomKey = key;
     game = { hostKey: v.hostKey, status: v.status, round: v.round || 1, order: v.order || [], skips: v.skips || 0, size: sizeOf(v.size) };
     players = {};
     Object.entries(v.players || {}).forEach(([k, p]) => { players[k] = Object.assign({ key: k }, p); });
@@ -249,9 +259,84 @@ function subscribeRoom(c) {
       .sort((a, b) => (a.at || 0) - (b.at || 0));
     render();
   }, () => leaveRoom('Lost access to the room. Check your connection and try again.'));
+  subscribeChat(c);
 }
 
-function unsubscribe() { if (roomRef) roomRef.off(); roomRef = null; }
+function unsubscribe() {
+  if (roomRef) roomRef.off(); roomRef = null;
+  if (chatQuery) chatQuery.off(); chatQuery = null;
+  closeChat(); $('chatFab').hidden = true;
+}
+
+/* ---------- room chat ---------- */
+function subscribeChat(c) {
+  chatLoaded = false; unread = 0; updateBadge();
+  $('chatList').innerHTML = '<li class="empty">No messages yet. Say hi or send a 🪔</li>';
+  $('chatFab').hidden = false;
+  chatQuery = room(c).child('chat').limitToLast(60);
+  chatQuery.on('child_added', snap => {
+    const m = snap.val();
+    if (!m || typeof m.text !== 'string') return;
+    addChatItem(m);
+    if (chatLoaded) {
+      if (m.emoji) floatEmoji(m.text, m.by === pkey ? 'You' : m.name);
+      if (!chatOpen && m.by !== pkey) { unread++; updateBadge(); }
+    }
+  });
+  chatQuery.once('value').then(() => { chatLoaded = true; }).catch(() => { chatLoaded = true; });
+}
+
+function addChatItem(m) {
+  const list = $('chatList');
+  list.querySelector('.empty')?.remove();
+  const li = document.createElement('li');
+  li.className = 'msg' + (m.by === pkey ? ' mine' : '') + (m.emoji ? ' big' : '');
+  const who = document.createElement('span'); who.className = 'who'; who.textContent = m.by === pkey ? 'You' : (m.name || 'Someone');
+  const text = document.createElement('span'); text.className = 'text'; text.textContent = m.text;
+  li.append(who, text); list.appendChild(li);
+  while (list.children.length > 60) list.firstElementChild.remove();
+  list.scrollTop = list.scrollHeight;
+}
+
+function updateBadge() {
+  const b = $('chatBadge');
+  b.hidden = unread === 0; b.textContent = unread > 9 ? '9+' : String(unread);
+  $('chatFab').setAttribute('aria-label', unread ? `Open room chat, ${unread} new` : 'Open room chat');
+}
+
+function openChat() {
+  chatOpen = true; unread = 0; updateBadge();
+  $('chatPanel').hidden = false; $('chatFab').hidden = true; $('chatFab').setAttribute('aria-expanded', 'true');
+  const list = $('chatList'); list.scrollTop = list.scrollHeight;
+  $('chatInput').focus();
+}
+function closeChat() {
+  chatOpen = false; $('chatPanel').hidden = true; $('chatFab').setAttribute('aria-expanded', 'false');
+  if (code) $('chatFab').hidden = false;
+}
+
+async function sendChat(text, emoji) {
+  text = String(text || '').trim().slice(0, 200);
+  if (!text || !code) return false;
+  const now = Date.now();
+  if (now - lastSent < 600) return false;
+  lastSent = now;
+  const name = players[pkey]?.name || myName() || 'Someone';
+  try { await room(code).child('chat').push({ by: pkey, name, text, emoji: !!emoji, at: TS }); return true; }
+  catch { return false; }
+}
+
+function floatEmoji(e, who) {
+  if (calm) return;
+  const s = document.createElement('span');
+  s.className = 'float-emoji';
+  s.style.left = (8 + Math.random() * 78) + '%';
+  s.style.setProperty('--dx', ((Math.random() - .5) * 120).toFixed(0) + 'px');
+  s.textContent = e;
+  if (who) { const n = document.createElement('small'); n.textContent = who; s.appendChild(n); }
+  $('floatLayer').appendChild(s);
+  setTimeout(() => s.remove(), 3000);
+}
 
 /* ---------- actions ---------- */
 function myName() { return ($('nameInput').value || '').trim().slice(0, 20); }
@@ -429,6 +514,19 @@ function fireworks() {
     if (t < end) requestAnimationFrame(tick); else { clearInterval(timer); cv.remove(); }
   })(performance.now());
 }
+
+$('chatFab').onclick = openChat;
+$('chatClose').onclick = () => { closeChat(); $('chatFab').focus(); };
+$('chatPanel').addEventListener('keydown', e => { if (e.key === 'Escape') { closeChat(); $('chatFab').focus(); } });
+$('chatForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const inp = $('chatInput');
+  if (await sendChat(inp.value, false)) inp.value = '';
+  inp.focus();
+});
+$('emojiRow').addEventListener('click', e => {
+  const b = e.target.closest('.emoji'); if (b) sendChat(b.dataset.e, true);
+});
 
 $('copyBtn').onclick = async () => {
   const link = location.origin + location.pathname + '#' + code;

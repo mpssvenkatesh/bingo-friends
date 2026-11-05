@@ -259,8 +259,8 @@ input[type=text]:focus-visible { outline: none; border-color: var(--gold); box-s
   -webkit-mask: radial-gradient(circle, #000 66%, transparent 67%), repeating-conic-gradient(#000 0 9deg, transparent 9deg 24deg);
   -webkit-mask-composite: source-over;
   mask: radial-gradient(circle, #000 66%, transparent 67%), repeating-conic-gradient(#000 0 9deg, transparent 9deg 24deg);
-  animation: bloom .45s cubic-bezier(.3,1.6,.5,1);
 }
+.cell.hit.last::before { animation: bloom .45s cubic-bezier(.3,1.6,.5,1); }
 .cell.hit::after { content: none; }
 @keyframes bloom { from { transform: scale(.1) rotate(-120deg); opacity: 0; } }
 .cell.last { box-shadow: 0 0 0 3px var(--gold), 0 0 16px rgba(247,197,72,.8); z-index: 1; }
@@ -307,6 +307,55 @@ input[type=text]:focus-visible { outline: none; border-color: var(--gold); box-s
 .win p { margin: 0; font-size: 22px; max-width: 30ch; }
 .win .greet { font-family: var(--display); color: var(--marigold); font-size: 20px; }
 .win .note { color: var(--on-night-soft); }
+/* Room chat */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.chat-fab {
+  position: fixed; z-index: 25; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 58px; height: 58px; border-radius: 50%; border: 2px solid var(--gold); cursor: pointer; font-size: 26px; line-height: 1;
+  background: radial-gradient(circle at 35% 30%, var(--maroon-2), var(--maroon)); color: var(--cream);
+  box-shadow: 0 6px 18px rgba(0,0,0,.45), 0 0 18px rgba(247,197,72,.35);
+}
+.chat-fab:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
+.chat-fab .badge {
+  position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+  background: var(--rani); color: #fff; font-family: var(--body); font-size: 13px; font-weight: 700; line-height: 22px;
+  box-shadow: 0 0 0 2px var(--night); animation: light .4s cubic-bezier(.3,1.6,.5,1);
+}
+.chat {
+  position: fixed; z-index: 26; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  width: min(380px, calc(100vw - 24px)); height: min(520px, calc(100dvh - 90px));
+  display: flex; flex-direction: column; border-radius: 18px; overflow: hidden;
+  background: linear-gradient(160deg, var(--maroon-2), var(--maroon) 60%, #3e0a22);
+  border: 1.5px solid var(--gold); box-shadow: 0 18px 50px rgba(0,0,0,.6), 0 0 30px rgba(247,197,72,.2);
+  animation: sheet .3s cubic-bezier(.3,1.3,.5,1);
+}
+@keyframes sheet { from { transform: translateY(30px) scale(.96); opacity: 0; } }
+.chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px dashed rgba(247,197,72,.35); }
+.chat-head h2 { margin: 0; font-family: var(--display); font-weight: normal; font-size: 21px; color: var(--gold); }
+.chat-list { list-style: none; margin: 0; padding: 12px 14px; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.chat-list .empty { color: var(--on-night-soft); text-align: center; margin: auto 0; font-size: 15px; }
+.msg { max-width: 82%; align-self: flex-start; display: flex; flex-direction: column; gap: 1px; }
+.msg .who { font-size: 12px; color: var(--gold); padding-left: 4px; }
+.msg .text { background: rgba(0,0,0,.28); color: var(--on-night); padding: 6px 12px; border-radius: 14px 14px 14px 4px; overflow-wrap: anywhere; line-height: 1.35; }
+.msg.mine { align-self: flex-end; }
+.msg.mine .who { text-align: right; padding: 0 4px 0 0; }
+.msg.mine .text { background: linear-gradient(180deg, #ffe08a, var(--gold)); color: var(--ink); border-radius: 14px 14px 4px 14px; }
+.msg.big .text { background: none; font-size: 34px; padding: 0 4px; line-height: 1.1; }
+.emoji-row { display: flex; gap: 2px; padding: 6px 10px; overflow-x: auto; border-top: 1px dashed rgba(247,197,72,.25); scrollbar-width: none; }
+.emoji { flex: none; font-size: 24px; width: 40px; height: 40px; border-radius: 10px; border: none; background: transparent; cursor: pointer; transition: transform .12s; }
+.emoji:hover { background: rgba(247,197,72,.15); }
+.emoji:active { transform: scale(1.3); }
+.emoji:focus-visible { outline: 2px solid var(--gold); }
+.chat-form { display: flex; gap: 8px; padding: 10px 12px 12px; }
+.chat-form input { flex: 1; min-width: 0; font-size: 17px; padding: 8px 12px; }
+.float-layer { position: fixed; inset: 0; pointer-events: none; z-index: 24; overflow: hidden; }
+.float-emoji { position: absolute; bottom: -50px; font-size: 40px; animation: floatUp 2.8s cubic-bezier(.2,.6,.4,1) forwards; }
+.float-emoji small { display: block; font-family: var(--body); font-size: 12px; color: var(--on-night); text-align: center; text-shadow: 0 1px 3px #000; }
+@keyframes floatUp {
+  0% { transform: translateY(0) scale(.6); opacity: 0; }
+  12% { opacity: 1; transform: translateY(-12vh) scale(1.1); }
+  100% { transform: translateY(-85vh) translateX(var(--dx, 0)) scale(1); opacity: 0; }
+}
 #fireworks { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -404,6 +453,24 @@ input[type=text]:focus-visible { outline: none; border-color: var(--gold); box-s
     </div>
   </section>
 </div>
+
+<button class="chat-fab" id="chatFab" hidden aria-label="Open room chat" aria-expanded="false">
+  <span aria-hidden="true">💬</span><span class="badge" id="chatBadge" hidden>0</span>
+</button>
+<section class="chat" id="chatPanel" hidden aria-label="Room chat">
+  <header class="chat-head">
+    <h2>Room chat</h2>
+    <button class="btn small" id="chatClose">Close</button>
+  </header>
+  <ol class="chat-list" id="chatList" aria-live="polite"></ol>
+  <div class="emoji-row" id="emojiRow"><button type="button" class="emoji" data-e="🪔" aria-label="Send 🪔">🪔</button><button type="button" class="emoji" data-e="🎆" aria-label="Send 🎆">🎆</button><button type="button" class="emoji" data-e="🎉" aria-label="Send 🎉">🎉</button><button type="button" class="emoji" data-e="🔥" aria-label="Send 🔥">🔥</button><button type="button" class="emoji" data-e="😂" aria-label="Send 😂">😂</button><button type="button" class="emoji" data-e="😮" aria-label="Send 😮">😮</button><button type="button" class="emoji" data-e="😭" aria-label="Send 😭">😭</button><button type="button" class="emoji" data-e="👏" aria-label="Send 👏">👏</button><button type="button" class="emoji" data-e="🙏" aria-label="Send 🙏">🙏</button><button type="button" class="emoji" data-e="❤️" aria-label="Send ❤️">❤️</button></div>
+  <form class="chat-form" id="chatForm" autocomplete="off">
+    <label class="sr-only" for="chatInput">Message</label>
+    <input type="text" id="chatInput" maxlength="200" placeholder="Say something…">
+    <button class="btn primary small" type="submit">Send</button>
+  </form>
+</section>
+<div class="float-layer" id="floatLayer" aria-hidden="true"></div>
 
 <div class="win" id="win" hidden>
   <h2>BINGO!</h2>
